@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Perícia: o caso do hospital</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14212b;--acc:#0b6e8a;--warn:#b45309;--ok:#157347;--bad:#b42318;--bd:#c5ced6;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1519;--card:#18232b;--ink:#e6eef3;--acc:#4cc2e0;--warn:#f0a548;--ok:#4cc38a;--bad:#ff7a6e;--bd:#2c3b46;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1519;--card:#18232b;--ink:#e6eef3;--acc:#4cc2e0;--warn:#f0a548;--ok:#4cc38a;--bad:#ff7a6e;--bd:#2c3b46;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+#app{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:1.7rem;margin:.2em 0}h2{font-size:1.2rem;margin:.4em 0}
+p{margin:.4em 0}
+.tag{font:700 .78rem/1 ui-monospace,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin:10px 0}
+.note{border-left:4px solid var(--warn)}
+pre{background:#0b1117;color:#c9f0d8;font:14px/1.6 ui-monospace,Consolas,monospace;padding:12px;border-radius:8px;overflow-x:auto;margin:8px 0;white-space:pre}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;min-height:48px;width:100%}
+:root:not([data-theme="light"]) .btn{color:#06222b}
+.btn:focus-visible,.opt:focus-visible,.ev:focus-visible{outline:3px solid var(--warn);outline-offset:2px}
+.opt{display:block;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;padding:12px;margin:8px 0}
+.opt.ok{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 20%,var(--card))}
+.opt.no{border-color:var(--bad)}
+.bar{display:flex;justify-content:space-between;font-weight:700;gap:8px;flex-wrap:wrap}
+.fb{font-weight:600;margin-top:8px}
+.ev{display:block;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--bd);border-radius:8px;padding:12px;margin:8px 0}
+.ev.on{border-color:var(--acc);opacity:.6}
+.slot{display:flex;gap:10px;align-items:center;padding:8px 12px;border:1.5px dashed var(--bd);border-radius:8px;margin:6px 0;min-height:44px}
+.slot.f{border-style:solid;border-color:var(--ok)}
+.slot b{color:var(--acc);font-family:ui-monospace,Consolas,monospace}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const $=s=>document.querySelector(s);const app=$("#app");
+const shuffle=a=>a.map(x=>[Math.random(),x]).sort((p,q)=>p[0]-q[0]).map(x=>x[1]);
+const CL=["Verdadeiro positivo","Falso positivo","Verdadeiro negativo","Falso negativo"];
+const E=[
+{k:"Alerta do IDS (prioridade 2)",art:"01:58:03  Possível varredura de portas\norigem  203.0.113.50 (externa)\ndestino 192.0.2.0/24 (rede interna)\nstatus  não revisado até o dia seguinte",q:"Classifique este alerta.",o:CL,a:0,x:"É um verdadeiro positivo: havia mesmo uma varredura. O problema foi o processo, porque ninguém olhou o sino a tempo (Módulo 11).",ev:["01:58","Varredura de portas na rede (alerta não revisado)"]},
+{k:"Log do servidor (SSH)",art:"02:14:11  Failed password for admin from 203.0.113.50\n02:14:13  Failed password for admin from 203.0.113.50\n02:14:16  Accepted password for admin from 203.0.113.50",q:"O que este log sugere?",o:["Uso normal do administrador","Senha adivinhada por tentativas e acesso indevido","Falha de hardware","Atualização automática"],a:1,x:"Falhas seguidas de um sucesso, do mesmo IP externo, de madrugada: sinal clássico de força bruta (10.2). É o mesmo IP da varredura.",ev:["02:14","Acesso indevido ao servidor de prontuários"]},
+{k:"NetFlow (dados de sessão)",art:"192.0.2.20 -> 198.51.100.77:443\ninício 03:10   fim 06:10   volume 38 GB\nmédia diária deste servidor: 200 MB",q:"Mesmo sem ver o conteúdo (é HTTPS), o que isso indica?",o:["Backup rotineiro","Possível saída de dados: volume muito acima do normal, de madrugada","Nada, HTTPS é sempre seguro","Falha de NTP"],a:1,x:"O NetFlow não mostra o conteúdo, mas mostra quem, quando e quanto. É a prova de que o vigia ainda enxerga algo mesmo com criptografia (9.2 e 10.3).",ev:["03:10","Início do envio de 38 GB para fora"]},
+{k:"Log de DNS",art:"03:15  192.0.2.20  consulta kj83hf92nd0aq71xz5p.dominio-exemplo.test\n03:15  192.0.2.20  consulta p0z8x2m1qw9e7r4t6y.dominio-exemplo.test\n...  cerca de 4.000 consultas por hora ao mesmo domínio",q:"O que isso sugere?",o:["Navegação normal","Túnel de DNS escondendo dados","Servidor DHCP falso","Teste de ping"],a:1,x:"Nomes enormes e sem sentido, em grande volume, a partir de um servidor: é o túnel de DNS (9.1).",ev:["03:15","Pico de consultas DNS suspeitas"]},
+{k:"Comparando dois logs",art:"servidor   02:14:16  Accepted password for admin from 203.0.113.50\nfirewall   05:14:17  conexão aceita de 203.0.113.50 para o servidor",q:"O mesmo evento aparece com 3 horas de diferença. Por quê?",o:["Foram dois ataques diferentes","Relógios fora de sincronia (falta de NTP)","O firewall está mentindo","O SSH muda o horário"],a:1,x:"Sem relógios sincronizados (NTP), a linha do tempo da perícia não fecha e as provas perdem força (9.1).",ev:null},
+{k:"Alerta de login (prioridade 4)",art:"09:05:41  5 tentativas de login falhas\norigem  192.0.2.88 (estação da recepção)\nusuária maria.recepcao\n09:08:10  login com sucesso",q:"Classifique este alerta.",o:CL,a:1,x:"É um falso positivo: uma funcionária que errou a senha. Muitos falsos positivos cansam a equipe e escondem os alertas reais (11.2).",ev:["09:05","Alerta de login falho (falso positivo)"]}
+];
+let S;
+function start(){
+ app.innerHTML='<div class="tag">Perícia de segurança · Módulos 9, 10 e 11</div><h1>Perícia: o caso do hospital</h1><div class="card note"><p><b>Caso fictício, inspirado na notícia.</b> Uma ONG de saúde sofreu um ataque de ransomware, e a ANPD investiga falhas na proteção de dados de cerca de 500 mil pacientes. A organização diz que não houve vazamento de dados de pacientes.</p><p>Não sabemos os detalhes técnicos do caso real. Aqui as evidências são inventadas para treinar o raciocínio.</p></div><div class="card"><p><b>Sua missão:</b> analisar 6 evidências, montar a linha do tempo e responder à pergunta da perícia: <b>os dados saíram ou não?</b></p></div><button class="btn" id="go">Abrir a investigação</button>';
+ $("#go").onclick=()=>{S={i:0,s:0,ev:[]};round()};
+}
+function round(){
+ const e=E[S.i],o=shuffle(e.o.map((t,k)=>[t,k]));
+ const opts=e.o===CL?e.o.map((t,k)=>[t,k]):o;
+ app.innerHTML='<div class="bar"><span class="tag">Evidência '+(S.i+1)+' de 6</span><span>Acertos: '+S.s+'</span></div><h2>'+e.k+'</h2><pre>'+e.art.replace(/</g,"&lt;")+'</pre><p><b>'+e.q+'</b></p>'+opts.map(x=>'<button class="opt" data-k="'+x[1]+'">'+x[0]+'</button>').join("")+'<p class="fb" id="fb" aria-live="polite"></p><div id="nx"></div>';
+ let done=false;
+ app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+  if(done)return;done=true;const ok=+b.dataset.k===e.a;
+  if(ok)S.s++;if(e.ev)S.ev.push(e.ev);
+  app.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(+x.dataset.k===e.a)x.classList.add("ok");else if(x===b)x.classList.add("no")});
+  $("#fb").style.color=ok?"var(--ok)":"var(--bad)";$("#fb").textContent=(ok?"Correto. ":"Não foi essa. ")+e.x;
+  $("#nx").innerHTML='<button class="btn" id="n" style="margin-top:12px">'+(S.i===5?"Montar a linha do tempo":"Próxima evidência")+'</button>';
+  $("#n").onclick=()=>{S.i++;S.i===6?order():round()};
+ });
+}
+function order(){
+ const truth=[...S.ev].sort((a,b)=>a[0]<b[0]?-1:1),pool=shuffle(S.ev);let pick=[],bad=0;
+ const draw=()=>{
+  app.innerHTML='<div class="tag">Linha do tempo</div><h2>Toque nos eventos na ordem em que aconteceram</h2><div id="sl">'+truth.map((t,k)=>'<div class="slot'+(pick[k]?" f":"")+'">'+(pick[k]?'<b>'+pick[k][0]+'</b> '+pick[k][1]:"…")+'</div>').join("")+'</div>'+pool.map((e,k)=>'<button class="ev'+(pick.includes(e)?" on":"")+'" data-k="'+k+'" '+(pick.includes(e)?"disabled":"")+'>'+e[1]+'</button>').join("")+'<p class="fb" id="fb" aria-live="polite"></p>';
+  app.querySelectorAll(".ev:not(.on)").forEach(b=>b.onclick=()=>{
+   const e=pool[+b.dataset.k];
+   if(e===truth[pick.length]){pick.push(e);if(pick.length===truth.length){S.bonus=bad===0;return end()}draw()}
+   else{bad++;draw();$("#fb").style.color="var(--bad)";$("#fb").textContent="Esse não é o próximo. Olhe os horários dos logs."}
+  });
+ };
+ draw();
+}
+function end(){
+ const t=S.s+(S.bonus?1:0),r=t>=7?"Perita(o) sênior":t>=5?"Analista de SOC":"Estagiária(o) de SOC";
+ app.innerHTML='<div class="tag">Relatório da perícia</div><h1>'+r+'</h1><p><b>'+t+' de 7 pontos</b> (6 evidências + 1 de bônus pela linha do tempo sem erro)</p><div class="card"><h2>Conclusão</h2><p>Há indícios fortes de <b>acesso indevido seguido de saída de dados</b>: varredura, login por força bruta, 38 GB saindo de madrugada e DNS suspeito, tudo ligado ao mesmo IP e ao mesmo servidor.</p><p>Nada disso seria provável sem <b>logs centralizados, NetFlow e relógios sincronizados</b>. E um alerta ignorado transformou um problema pequeno em um incidente grande.</p></div><div class="card note"><p><b>E a LGPD?</b> Quando há risco aos titulares, é preciso comunicar as pessoas afetadas de forma clara. No caso real, a ANPD também aponta problemas de comunicação.</p></div><button class="btn" id="a">Investigar de novo</button>';
+ $("#a").onclick=start;
+}
+start();
+</script>
+</body>
+</html>
